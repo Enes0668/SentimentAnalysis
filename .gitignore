@@ -1,0 +1,34 @@
+# Python cache ve bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Jupyter notebook checkpoint
+.ipynb_checkpoints/
+
+# IDE ve editör dosyaları
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Log ve temp dosyalar
+*.log
+*.tmp
+*.bak
+
+# Model ve büyük veri dosyaları (istersen git'e ekleme)
+*.h5
+*.hdf5
+*.ckpt
+*.tflite
+
+# Sistem dosyaları
+.DS_Store
+Thumbs.db

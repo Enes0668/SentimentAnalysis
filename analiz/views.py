@@ -11,16 +11,15 @@ def index(request):
 
 def frame_generator():
     while True:
-        frame, faces = camera.get_frame_with_faces()
+        frame, faces = camera.get_frame_with_faces_and_emotions()
         if frame is None:
             continue
-        # JPEG'e çevir
+        # frame'i JPEG olarak encode et (Flask/Django için)
         ret, jpeg = cv2.imencode('.jpg', frame)
         if not ret:
             continue
-        frame_bytes = jpeg.tobytes()
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+               b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
 
 def video_feed(request):
     return StreamingHttpResponse(frame_generator(), content_type='multipart/x-mixed-replace; boundary=frame')
