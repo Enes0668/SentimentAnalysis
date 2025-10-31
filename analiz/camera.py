@@ -7,27 +7,23 @@ from tensorflow.keras.models import load_model
 
 class VideoCamera:
     def __init__(self, src=0):
-        # 📷 Kamera aç
+
         self.video = cv2.VideoCapture(src)
         if not self.video.isOpened():
             raise RuntimeError("Kamera açılamadı. Cihaz index'ini kontrol et.")
 
-        # 🧠 Mini-Xception FER2013 modeli yükle
         model_path = os.path.join(os.path.dirname(__file__), 'fer2013_mini_XCEPTION.102-0.66.hdf5')
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model bulunamadı: {model_path}")
         self.emotion_model = load_model(model_path, compile=False)
 
-        # 🎭 Duygu etiketleri
         self.emotions = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 
-        # 🔍 Haarcascade yükle
         cascade_path = os.path.join(os.path.dirname(__file__), 'haarcascade_frontalface_default.xml')
         if not os.path.exists(cascade_path):
             raise FileNotFoundError(f"Haarcascade dosyası bulunamadı: {cascade_path}")
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
 
-        # 🔁 Kamera thread başlat
         self.lock = threading.Lock()
         self.grabbed, self.frame = self.video.read()
         self.running = True
@@ -54,11 +50,9 @@ class VideoCamera:
         if face.size == 0:
             return None
 
-        # Gri tonlama (Mini-Xception gri giriş bekliyor)
         face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
         resized = cv2.resize(face_gray, target_size)
         normalized = resized.astype('float32') / 255.0
-        # (1, 64, 64, 1)
         return np.expand_dims(np.expand_dims(normalized, -1), 0)
 
     def get_frame_with_faces_and_emotions(self):
