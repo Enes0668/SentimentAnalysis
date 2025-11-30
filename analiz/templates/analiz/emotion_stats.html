@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Duygu Analizi İstatistikleri</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+
+    <style>
+        body {
+            background: #f7f7f7;
+        }
+        .card {
+            border-radius: 12px;
+        }
+        .emotion-badge {
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #fff;
+            text-transform: capitalize;
+        }
+
+        /* 7 DUYGU İÇİN TAM RENK SETİ */
+        .emotion-angry { background: #e53935; }      /* Angry   */
+        .emotion-disgust { background: #43a047; }    /* Disgust */
+        .emotion-fear { background: #00897b; }       /* Fear    */
+        .emotion-happy { background: #fbc02d; }      /* Happy   */
+        .emotion-sad { background: #1e88e5; }        /* Sad     */
+        .emotion-surprise { background: #8e24aa; }   /* Surprise*/
+        .emotion-neutral { background: #757575; }    /* Neutral */
+    </style>
+</head>
+
+<body>
+<div class="container py-5">
+
+    <h1 class="text-center mb-4">🧠 Duygu Analizi İstatistikleri</h1>
+
+    <!-- Özet Kartı -->
+    <div class="row mb-4">
+        <div class="col-md-6 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h4 class="card-title">Toplam Kayıt</h4>
+                    <p class="display-5 fw-bold text-primary">{{ total_count }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Duygu Dağılımı -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                Duygu Dağılımı {% if user_only %}(Sadece Ben){% endif %}
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th scope="col">Duygu</th>
+                    <th scope="col">Adet</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for item in emotion_counts %}
+                    <tr>
+                        <td>
+                            <!-- item.emotion burada: angry / disgust / fear / happy / sad / surprise / neutral -->
+                            <span class="emotion-badge emotion-{{ item.emotion }}">
+                                {{ item.emotion|title }}
+                            </span>
+                        </td>
+                        <td><strong>{{ item.count }}</strong></td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="2" class="text-center text-muted py-3">
+                            Kayıt bulunamadı.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Son 7 Gün -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">📅 Son 7 Gün</h5>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th scope="col">Tarih</th>
+                    <th scope="col">Duygu</th>
+                    <th scope="col">Adet</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in daily_stats %}
+                    <tr>
+                        <td>{{ row.day }}</td>
+                        <td>
+                            <span class="emotion-badge emotion-{{ row.emotion }}">
+                                {{ row.emotion|title }}
+                            </span>
+                        </td>
+                        <td><strong>{{ row.count }}</strong></td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted py-3">
+                            Kayıt bulunamadı.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>
