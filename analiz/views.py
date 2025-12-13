@@ -49,21 +49,18 @@ def video_feed(request):
 def emotion_stats(request):
     qs = EmotionRecord.objects.all()
 
-    # Sadece ilgili kullanıcının verileri istenirse:
     user_only = request.GET.get("me") == "1"
     if user_only:
         qs = qs.filter(user=request.user)
 
     total_count = qs.count()
 
-    # Duygu dağılımı
     emotion_counts = (
         qs.values('emotion')
         .annotate(count=Count('id'))
         .order_by('-count')
     )
 
-    # Son 7 gün günlük dağılım
     seven_days_ago = timezone.now() - timezone.timedelta(days=7)
     daily_stats = (
         qs.filter(created_at__gte=seven_days_ago)
