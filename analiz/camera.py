@@ -1,41 +1,52 @@
-# analiz/camera.py
 import cv2
 import threading
 import numpy as np
 import os
+import time
+from collections import deque
+
 from tensorflow.keras.models import load_model
 from ultralytics import YOLO
-import time
 
 from django.utils import timezone
-from .models import EmotionRecord  # <-- yeni
+from .models import EmotionRecord
+
 camera_instance = None
+
 
 class VideoCamera:
     def __init__(self, src=0, user=None, session_id=None):
         self.video = cv2.VideoCapture(src, cv2.CAP_DSHOW)
         if not self.video.isOpened():
-            raise RuntimeError("Kamera açılamadı. Cihaz index'ini kontrol et.")
+            raise RuntimeError("Kamera açılamadı.")
 
         self.face_model = YOLO("analiz/yolov8n-face.pt")
 
         model_path = os.path.join(os.path.dirname(__file__), "fer2013_mini_XCEPTION.102-0.66.hdf5")
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model bulunamadı: {model_path}")
+
         self.emotion_model = load_model(model_path, compile=False)
         self.emotions = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 
         self.lock = threading.Lock()
         self.running = True
-
         self.frame = None
         self.processed_frame = None
 
         self.user = user
         self.session_id = session_id or f"session-{int(time.time())}"
-        self.last_emotion = None
+
         self.last_save_time = 0
-        self.save_interval = 2.0 
+        self.save_interval = 2.0
+
+
+        self.tracks = {}  
+        self.next_track_id = 1
+        self.track_max_age = 0.8      
+        self.match_dist_thresh = 80.0  
+
+        self.max_faces = 10
 
         threading.Thread(target=self._update, daemon=True).start()
         threading.Thread(target=self._process, daemon=True).start()
@@ -48,10 +59,9 @@ class VideoCamera:
     def _update(self):
         while self.running:
             grabbed, frame = self.video.read()
-            if not grabbed:
-                continue
-            with self.lock:
-                self.frame = frame.copy()
+            if grabbed:
+                with self.lock:
+                    self.frame = frame.copy()
             time.sleep(0.01)
 
     def _process(self):
@@ -62,40 +72,55 @@ class VideoCamera:
                 frame = self.frame.copy()
 
             detections = self.face_model(frame)[0]
-            current_emotion = None
-            current_confidence = None
 
+            boxes = []
             for det in detections.boxes:
                 x1, y1, x2, y2 = map(int, det.xyxy[0])
-                face_input = self.preprocess_face(frame, (x1, y1, x2, y2))
-                if face_input is not None:
-                    try:
-                        pred = self.emotion_model.predict(face_input, verbose=0)
-                        emotion_index = int(np.argmax(pred))
-                        emotion_label = self.emotions[emotion_index]
-                        confidence = float(np.max(pred))
-                    except Exception:
-                        emotion_label = "Error"
-                        confidence = None
-                else:
-                    emotion_label = "Unknown"
-                    confidence = None
+                boxes.append((x1, y1, x2, y2))
 
-                current_emotion = emotion_label
-                current_confidence = confidence
+            boxes.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
+            boxes = boxes[: self.max_faces]
+
+            now_ts = time.time()
+            self._cleanup_tracks(now_ts)
+
+            for bbox in boxes:
+                track_id = self._assign_track(bbox, now_ts)
+                x1, y1, x2, y2 = self._smooth_bbox_for_track(track_id, bbox)
+
+                face_input, edges = self.preprocess_face(frame, (x1, y1, x2, y2))
+                if face_input is None or edges is None:
+                    continue
+
+                pred = self.emotion_model.predict(face_input, verbose=0)
+                idx = int(np.argmax(pred))
+                emotion_label = self.emotions[idx]
+                confidence = float(np.max(pred))
+
+                face_roi = frame[y1:y2, x1:x2]
+                if face_roi.size != 0:
+                    if face_roi.shape[0] == edges.shape[0] and face_roi.shape[1] == edges.shape[1]:
+                        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+                        edges_colored[:, :, 1] = 0
+                        edges_colored[:, :, 2] = 0
+                        try:
+                            frame[y1:y2, x1:x2] = cv2.addWeighted(face_roi, 0.85, edges_colored, 0.50, 0)
+                        except Exception:
+                            pass
 
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, emotion_label, (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                cv2.putText(
+                    frame,
+                    f"ID {track_id}: {emotion_label} ({confidence:.2f})",
+                    (x1, max(20, y1 - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    2
+                )
 
-            if current_emotion and current_emotion not in ["Unknown", "Error"]:
-                now_ts = time.time()
-                if (
-                    (self.last_emotion != current_emotion)
-                    or (now_ts - self.last_save_time) > self.save_interval
-                ):
-                    self._save_emotion(current_emotion, current_confidence)
-                    self.last_emotion = current_emotion
+                if now_ts - self.last_save_time > self.save_interval:
+                    self._save_emotion(emotion_label, confidence)
                     self.last_save_time = now_ts
 
             with self.lock:
@@ -103,6 +128,100 @@ class VideoCamera:
 
             time.sleep(0.01)
 
+
+    def _bbox_centroid(self, bbox):
+        x1, y1, x2, y2 = bbox
+        return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+    def _cleanup_tracks(self, now_ts):
+        to_delete = []
+        for tid, info in self.tracks.items():
+            if (now_ts - info["last_seen"]) > self.track_max_age:
+                to_delete.append(tid)
+        for tid in to_delete:
+            del self.tracks[tid]
+
+    def _assign_track(self, bbox, now_ts):
+        cx, cy = self._bbox_centroid(bbox)
+
+        best_id = None
+        best_dist = 1e9
+
+        for tid, info in self.tracks.items():
+            pcx, pcy = info["centroid"]
+            dist = ((cx - pcx) ** 2 + (cy - pcy) ** 2) ** 0.5
+            if dist < best_dist:
+                best_dist = dist
+                best_id = tid
+
+        if best_id is None or best_dist > self.match_dist_thresh:
+            tid = self.next_track_id
+            self.next_track_id += 1
+            self.tracks[tid] = {
+                "history": deque(maxlen=5),
+                "centroid": (cx, cy),
+                "last_seen": now_ts
+            }
+            return tid
+
+        self.tracks[best_id]["centroid"] = (cx, cy)
+        self.tracks[best_id]["last_seen"] = now_ts
+        return best_id
+
+    def _smooth_bbox_for_track(self, track_id, bbox):
+        info = self.tracks.get(track_id)
+        if info is None:
+            return bbox
+
+        info["history"].append(bbox)
+        avg = np.mean(info["history"], axis=0).astype(int)
+        return tuple(avg)
+
+
+    def apply_gaussian_blur(self, gray):
+        return cv2.GaussianBlur(gray, (5, 5), 0)
+
+    def apply_clahe(self, gray):
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        return clahe.apply(gray)
+
+    def extract_edges(self, gray):
+        return cv2.Canny(gray, 50, 150)
+
+
+    def preprocess_face(self, frame, box):
+        h, w, _ = frame.shape
+        x1, y1, x2, y2 = box
+
+        x1 = max(0, min(w - 1, x1))
+        y1 = max(0, min(h - 1, y1))
+        x2 = max(0, min(w, x2))
+        y2 = max(0, min(h, y2))
+
+        if x2 <= x1 or y2 <= y1:
+            return None, None
+
+        face = frame[y1:y2, x1:x2]
+        if face.size == 0 or face.shape[0] < 10 or face.shape[1] < 10:
+            return None, None
+
+        gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+        gray = self.apply_gaussian_blur(gray)
+        gray = self.apply_clahe(gray)
+
+        edges = self.extract_edges(gray)
+
+        try:
+            face_resized = cv2.resize(gray, (64, 64))
+        except Exception:
+            return None, None
+
+        face_norm = face_resized.astype("float32") / 255.0
+        face_input = np.expand_dims(np.expand_dims(face_norm, -1), 0)
+
+        return face_input, edges
+
+ 
     def _save_emotion(self, emotion_label, confidence):
         try:
             EmotionRecord.objects.create(
@@ -113,22 +232,12 @@ class VideoCamera:
                 created_at=timezone.now()
             )
         except Exception as e:
-            # İstersen loglayabilirsin:
             print("Emotion kayıt hatası:", e)
 
-    def preprocess_face(self, frame, box):
-        x1, y1, x2, y2 = box
-        face = frame[y1:y2, x1:x2]
-        if face.size == 0:
-            return None
-        face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
-        face_resized = cv2.resize(face_gray, (64, 64))
-        face_normalized = face_resized.astype('float32') / 255.0
-        return np.expand_dims(np.expand_dims(face_normalized, -1), 0)
 
     def get_jpeg_frame(self):
         with self.lock:
             if self.processed_frame is None:
                 return None
-            ret, jpeg = cv2.imencode(".jpg", self.processed_frame)
+            _, jpeg = cv2.imencode(".jpg", self.processed_frame)
             return jpeg.tobytes()

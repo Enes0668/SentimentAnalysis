@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Duygu Analizi İstatistikleri</title>
 
-    <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
           rel="stylesheet">
 
@@ -23,14 +22,13 @@
             text-transform: capitalize;
         }
 
-        /* 7 DUYGU İÇİN TAM RENK SETİ */
-        .emotion-angry { background: #e53935; }      /* Angry   */
-        .emotion-disgust { background: #43a047; }    /* Disgust */
-        .emotion-fear { background: #00897b; }       /* Fear    */
-        .emotion-happy { background: #fbc02d; }      /* Happy   */
-        .emotion-sad { background: #1e88e5; }        /* Sad     */
-        .emotion-surprise { background: #8e24aa; }   /* Surprise*/
-        .emotion-neutral { background: #757575; }    /* Neutral */
+        .emotion-angry { background: #e53935; }      
+        .emotion-disgust { background: #43a047; }   
+        .emotion-fear { background: #00897b; }       
+        .emotion-happy { background: #fbc02d; }     
+        .emotion-sad { background: #1e88e5; }        
+        .emotion-surprise { background: #8e24aa; }   
+        .emotion-neutral { background: #757575; }    
     </style>
 </head>
 
@@ -39,7 +37,6 @@
 
     <h1 class="text-center mb-4">🧠 Duygu Analizi İstatistikleri</h1>
 
-    <!-- Özet Kartı -->
     <div class="row mb-4">
         <div class="col-md-6 mx-auto">
             <div class="card shadow-sm">
@@ -51,7 +48,6 @@
         </div>
     </div>
 
-    <!-- Duygu Dağılımı -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0">
@@ -70,7 +66,6 @@
                 {% for item in emotion_counts %}
                     <tr>
                         <td>
-                            <!-- item.emotion burada: angry / disgust / fear / happy / sad / surprise / neutral -->
                             <span class="emotion-badge emotion-{{ item.emotion }}">
                                 {{ item.emotion|title }}
                             </span>
@@ -89,7 +84,6 @@
         </div>
     </div>
 
-    <!-- Son 7 Gün -->
     <div class="card shadow-sm">
         <div class="card-header bg-success text-white">
             <h5 class="mb-0">📅 Son 7 Gün</h5>
