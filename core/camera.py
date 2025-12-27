@@ -40,9 +40,15 @@ class VideoCamera:
         self.emotion_interval = 6
 
         self.emotions = [
-            "angry", "disgust", "fear",
-            "happy", "sad", "surprise", "neutral"
-        ]
+    "sad",    # 0
+    "neutral",  # 1
+    "disgust",  # 2
+    "fear",     # 3
+    "happy",    # 4
+    "neutral",  # 5
+    "surprise",      # 6
+    "angry"  # 7
+    ]
 
         threading.Thread(target=self._update, daemon=True).start()
         threading.Thread(target=self._load_models, daemon=True).start()
@@ -75,7 +81,7 @@ class VideoCamera:
 
     def _load_models(self):
         self.face_model = YOLO("analiz/yolov8n-face.pt")
-        model_path = os.path.join(os.path.dirname(__file__), "emotion_model_tf12.h5")
+        model_path = os.path.join(os.path.dirname(__file__), "emotion_model_affectnet_finetuned.h5")
         self.emotion_model = load_model(model_path, compile=False)
 
         dummy = np.zeros((1, 197, 197, 3), dtype=np.float32)
