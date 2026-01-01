@@ -8,6 +8,8 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 # ====== Ayarlar ======
 PRETRAINED_MODEL = "emotion_model_affectnet.h5"
 FINETUNED_MODEL = "emotion_model_affectnet_finetuned.h5"
+
+
 TRAIN_DIR = "data_generated/train"
 VAL_DIR = "data_generated/valid"
 IMG_SIZE = (197, 197)

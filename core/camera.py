@@ -40,15 +40,12 @@ class VideoCamera:
         self.emotion_interval = 6
 
         self.emotions = [
-    "sad",    # 0
-    "neutral",  # 1
-    "disgust",  # 2
-    "fear",     # 3
-    "happy",    # 4
-    "neutral",  # 5
-    "surprise",      # 6
-    "angry"  # 7
-    ]
+            "neutral", "neutral", "disgust", "fear", "happy", "sad", "surprise", "angry"
+        ]
+
+        # Kaydedilecek klasör
+        self.save_folder = "saved_faces"
+        os.makedirs(self.save_folder, exist_ok=True)
 
         threading.Thread(target=self._update, daemon=True).start()
         threading.Thread(target=self._load_models, daemon=True).start()
@@ -114,10 +111,7 @@ class VideoCamera:
                     x1, y1, x2, y2 = map(int, det.xyxy[0])
                     boxes.append((x1, y1, x2, y2))
 
-                boxes.sort(
-                    key=lambda b: (b[2] - b[0]) * (b[3] - b[1]),
-                    reverse=True
-                )
+                boxes.sort(key=lambda b: (b[2]-b[0])*(b[3]-b[1]), reverse=True)
                 self.boxes = boxes[:self.max_faces]
 
             for i, (x1, y1, x2, y2) in enumerate(self.boxes):
@@ -132,31 +126,38 @@ class VideoCamera:
                 emotion, conf = last_emotions.get(i, ("...", 0.0))
 
                 if self.frame_count % self.emotion_interval == 0:
-                    face_in = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-                    face_in = cv2.resize(face_in, (197, 197))
-                    face_in = face_in.astype("float32") / 255.0
-                    face_in = np.expand_dims(face_in, axis=0)
+                    # Orijinal
+                    original_face = face.copy()
 
-                    pred = self.emotion_model.predict(face_in, verbose=0)
+                    # Gri tonlama
+                    face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+
+                    # Boyutlandırma
+                    face_resized = cv2.resize(face_gray, (197, 197))
+
+                    # Normalize etme ve batch boyutu
+                    face_input = face_resized.astype("float32") / 255.0
+                    face_input = np.expand_dims(face_input, axis=(0,-1))  # shape: (1,197,197,1)
+
+                    # Tahmin
+                    pred = self.emotion_model.predict(np.repeat(face_input, 3, axis=-1), verbose=0)  # 3 kanal beklerse repeat
                     idx = int(np.argmax(pred))
                     emotion = self.emotions[idx]
                     conf = float(np.max(pred))
                     last_emotions[i] = (emotion, conf)
 
+                    # Kaydetme
                     if now - self.last_save_time > self.save_interval:
+                        timestamp = int(time.time())
+                        cv2.imwrite(os.path.join(self.save_folder, f"{self.session_id}_face{i}_{timestamp}_original.jpg"), original_face)
+                        cv2.imwrite(os.path.join(self.save_folder, f"{self.session_id}_face{i}_{timestamp}_gray.jpg"), face_gray)
+                        cv2.imwrite(os.path.join(self.save_folder, f"{self.session_id}_face{i}_{timestamp}_resized.jpg"), face_resized)
                         self._save_emotion(emotion, conf)
                         self.last_save_time = now
 
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(
-                    frame,
-                    f"{emotion} {conf:.2f}",
-                    (x1, y1 - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2
-                )
+                cv2.putText(frame, f"{emotion} {conf:.2f}", (x1, y1-6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
             self.processed_frame = frame
 
